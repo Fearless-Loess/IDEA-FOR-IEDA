@@ -3,65 +3,137 @@ library(readxl)
 library(shiny)
 library(ggplot2)
 
-nfiles <- c(1, 2, 3)
-
-insertUI(
-  selector = "selectors", 
-  where = "beforeEnd",
-  ui = selectInput("org_col", "Which column has the organization name?", choices = colnames(read_excel(paste0(inFile, "$datapath")), label = "Organization")))
-insertUI(
-  selector = "selectors", 
-  where = "beforeEnd",
-  ui = selectInput("num_vols", "Which column has the relevant metric?", choices = colnames(read_excel(paste0(inFile, "$datapath")), label = "Number of Volunteers")))
-insertUI(
-  selector = "selectors", 
-  where = "beforeEnd",
-  ui = selectInput("year", "Which column has the year?", choices = colnames(read_excel(paste0(inFile, "$datapath")), label = "Year")))
-
-ieda_all <- function(nfiles) {
-    library(readxl)
-    lapply(nfiles, function(i) {
-      file <- read_excel(paste0("file", i))
-      colnames(file)[input$org_col] <- "Organization"
-      org <- file$'Organization'
-      num_vols <- stri_extract_all_regex(input$num_col, "[0-9]+")
-      num_vols <- as.numeric(unlist(num_vols))
-      num_vols <- num_vols[num_vols != min(input$year_col) & num_vols != max(input$year_col) & num_vols > 30]
-      survey <- rep(input$year_col, length(org))
-      file <- data.frame(org, num_vols, survey)
-      file <- file[complete.cases(file), ]
-      #file1 <- filter(file1, num_vols < 1000)
-      file <- arrange(file)
-      str(file) 
-      #update the files_list with the new file here?
-    })
-    #left join files by organization for the same year
-    file_Before <- left_join(subset(files_list, survey == min(survey)))
-    file_After <- anti_join(subset(files_list, survey != min(survey)))
-    #bind rows of files by year, arrange in descending order
-    file_1 <- file[file$survey == min(survey)]
-    file_2 <- file[file$survey == max(survey)]
-    all_files <- bind_rows(file_1, file_2, .id = "survey")
-    arrange(all_files, org, desc(survey))
-    str(all_files)
-  }
-})
-
-
-
-#combine all the files from one or more years, and put them together so you can plot
-output$histogram <- reactive({
-  renderPlot({   
-    ggplot(data = ieda_all(all_files), aes(x = org, y = num_vols, fill = survey, color = survey)) +
-      geom_bar(position = "dodge", stat = "identity") +
-      scale_size_area() + 
-      scale_color_manual(values = rep("black", length(survey))) +
-      scale_fill_manual(values = randomColor(count = length(survey))) +
-      xlab(org_label) +
-      ylab(vols_label) +
-      scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) +
-      ggtitle(plot_title)+
-      geom_text(aes(label=num_vols,vjust=-0.33333), position = position_dodge(width = .9)) 
+ui <- fluidPage(
+  shinythemes::themeSelector(),
+  titlePanel("IEDA Volunteer stats"),
+  
+  sidebarLayout(
     
-    ggsave(filename = input$pdf_title, device = "pdf")
+    sidebarPanel(
+      #I need: names of each of the files, 
+      #   columns for org, num_vol, and survey year, 
+      #   labels for x axis, y axis, and title, 
+      #   what colors should the bars be? RANDOMIZE!
+      #   names for the PDF to be created
+      #   name of the directory to select from
+      
+    numericInput("nfiles", "number of files", value = 2, min = 1, step = 1),
+    uiOutput("fileInputs"),
+    tags$div(id = 'placeholder'), 
+    textInput(inputId = "org_label", label = "X axis label"), 
+    textInput(inputId = "vols_label", label = "Y axis label"), 
+    textInput(inputId = "plot_title", label = "Chart title"),
+    textInput(inputId = "pdf_title", label = "PDF title")), 
+    
+  mainPanel(
+    plotOutput(
+      outputId = "histogram")
+  )
+  )
+)
+    
+server <- function(input, output) {
+  
+
+#update the columns you can choose whenever a new file is uploaded
+  output$fileInputs=renderUI({
+    html_ui = " "
+    for (i in 1:input$nfiles){
+      html_ui <- paste0(html_ui, fileInput(paste0("file",i), label=paste0("File ",i)))
+    }
+    HTML(html_ui)
   })
+  
+  observeEvent((input$file1), {
+    function() {for (i in 1:input$nfiles){
+      if (is.null(paste0("input$file",i))) {
+        return()
+      } else {
+    
+      insertUI(
+        selector = paste0("file",i), 
+        ui = selectInput("org_col", "Which column has the organization name?", choices = colnames(read_excel(paste0("input$file",i,"$name"))), label = "Organization"))
+      insertUI(
+        selector = paste0("file",i), 
+        ui = selectInput("num_vols", "Which column has the relevant metric?", choices = colnames(read_excel(paste0("input$file",i,"$name"))), label = "Number of Volunteers"))
+      insertUI(
+        selector = paste0("file",i), 
+        ui = selectInput("year", "Which column has the year?", choices = colnames(read_excel(paste0("input$file",i,"$name"))), label = "Year"))
+      }
+    }
+   }
+  })
+  
+#  observeEvent(input$fileInputs, {
+#    output$selectors= 
+#    file.rename(input$fileInputs[['name']], paste0("file", 1:nfiles))
+#    html_ui_org = " "
+#    html_ui_vols = " "
+#    html_ui_year = " "
+#    for (i in input$nfiles) {
+#      inFile <- paste0("input$file", i)
+#      if(is.null(inFile))
+#      return(NULL)
+#      html_ui_org <- paste0(html_ui_org, selectInput("org_col", "Which column has the organization name?", choices = colnames(read_excel(paste0(inFile, "$datapath")), label = "Organization")))
+#      html_ui_vols <- paste0(html_ui_vols, selectInput("num_vols", "Which column has the relevant metric?", choices = colnames(read_excel(paste0(inFile, "$datapath")), label = "Number of Volunteers")))
+#      html_ui_year <- paste0(html_ui_year, selectInput("year", "Which column has the year?", choices = colnames(read_excel(paste0(inFile, "$datapath")), label = "Year")))
+#    }
+#    HTML(html_ui_org)
+#    HTML(html_ui_vols)
+#    HTML(html_ui_year)
+#   })
+
+ 
+#combine all the files from one or more years, and put them together so you can plot
+  ieda_all <- reactive({
+    function(fileInputs) {
+      library(readxl)
+        lapply(input$fileInputs[['name']], function(i) {
+          file <- read_excel(i)
+          colnames(file)[input$org_col] <- "Organization"
+          org <- file$'Organization'
+          num_vols <- stri_extract_all_regex(input$num_col, "[0-9]+")
+          num_vols <- as.numeric(unlist(num_vols))
+          num_vols <- num_vols[num_vols != min(input$year) & num_vols != max(input$year) & num_vols > 30]
+          survey <- rep(input$year, length(org))
+          file <- data.frame(org, num_vols, survey)
+          file <- file[complete.cases(file), ]
+          #file1 <- filter(file1, num_vols < 1000)
+          file <- arrange(file)
+          str(file) 
+          #update the fileInputs with the new file here?
+       })
+   #left join files by organization for the same year
+          file_Before <- left_join(subset(input$fileInputs, survey == min(survey)))
+          file_After <- anti_join(subset(input$fileInputs, survey != min(survey)))
+    #bind rows of files by year, arrange in descending order
+          file_1 <- file[file$survey == min(survey)]
+          file_2 <- file[file$survey == max(survey)]
+          all_files <- bind_rows(file_1, file_2, .id = "survey")
+          arrange(all_files, org, desc(survey))
+          str(all_files)
+    }
+  })
+  
+    
+  
+    #combine all the files from one or more years, and put them together so you can plot
+        output$histogram <- reactive({
+          renderPlot({   
+        ggplot(data = all_files, aes(x = org, y = num_vols, fill = survey, color = survey)) +
+          geom_bar(position = "dodge", stat = "identity") +
+          scale_size_area() + 
+          scale_color_manual(values = rep("black", length(survey))) +
+          scale_fill_manual(values = randomColor(count = length(survey))) +
+          xlab(org_label) +
+          ylab(vols_label) +
+          scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) +
+          ggtitle(plot_title)+
+          geom_text(aes(label=num_vols,vjust=-0.33333), position = position_dodge(width = .9)) 
+        
+        ggsave(filename = input$pdf_title, device = "pdf")
+    })
+        
+})
+}
+shinyApp(ui = ui, server = server)
