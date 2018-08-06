@@ -26,6 +26,8 @@ ui <- fluidPage(
       uiOutput("sel_year"),
       uiOutput("sel_org"),
       uiOutput("sel_vols"),
+      uiOutput("head_org"), 
+      uiOutput("head_vols"),
       textInput(inputId = "org_label", label = "X axis label"), 
       textInput(inputId = "vols_label", label = "Y axis label"), 
       textInput(inputId = "plot_title", label = "Chart title"),
@@ -42,17 +44,22 @@ server <- function(input, output) {
   output$sel_year <- renderUI({
     req(input$file1)
     message('-- Entering renderUI output$sel_year')
-    print(input$file1)
     lapply(input$file1$datapath, function(file) {
-      selectInput("year1", "Which column has the year?", choices = colnames(read_excel(file)),  label = "Year")
+      textInput("year1", label = "Year", placeholder = "What year(s) does this survey cover?")
     })
   })
   output$sel_org <- renderUI({
     req(input$file1)
     message('-- Entering renderUI output$sel_org')
-    print(input$file1)
     lapply(input$file1$datapath, function(file) {
       selectInput("org_col1", "Which column has the organization name?", choices = colnames(read_excel(file)), label = "Organization")
+    })      
+  })
+  output$head_org <- renderUI({
+    req(input$file1)
+    message('-- Entering renderUI output$sel_org')
+    lapply(input$file1$datapath, function(file) {
+      numericInput("header_orgs", "Optional: header rows - Organizations", 3)
     })      
   })
   output$sel_vols <- renderUI({
@@ -63,31 +70,46 @@ server <- function(input, output) {
       selectInput("num_vols1", "Which column has the relevant metric?", choices = colnames(read_excel(file)), label = "Number of Volunteers")
     })
   })
+  output$head_vols <- renderUI({
+    req(input$file1)
+    message('-- Entering renderUI output$sel_org')
+    lapply(input$file1$datapath, function(file) {
+      numericInput("header_vols", "Optional: header rows  - Volunteers", 3)
+    })      
+  })
 
   plot_data <- reactive({
     req(input$org_col1)
     req(input$num_vols1)
     req(input$year1)
+    req(input$header_orgs)
+    req(input$header_vols)
     message('-- Cleaning data...')
     lapply(input$file1$datapath, function(x) {
-    file <- read_excel(x)
-    colnames(file)[input$org_col1] <- "Organization"
-    org <- file$'Organization'
-    num_vols <- stri_extract_all_regex(input$num_vols1, "[0-9]+")
-    num_vols <- as.numeric(unlist(num_vols))
-    num_vols <- num_vols[num_vols != min(input$year1) & num_vols != max(input$year1) & num_vols > 30]
-    survey <- rep(unique(input$year1), length(org))
-    file <- data.frame(org, num_vols, survey)
-    file <- file[complete.cases(file), ]
-    file <- arrange(file)
-    file
+      how_many <- data.frame(c(1:length(input$file1)))
+      file <- read_excel(x)
+      org <- file[input$org_col1]
+      org <- org[input$header_orgs:length(org)]
+      print(org)
+      num_vols <- stri_extract_all_regex(file[input$num_vols1], "[0-9]+")
+      num_vols <- as.numeric(unlist(num_vols))
+      num_vols <- num_vols[input$header_vols:length(num_vols)]
+      num_vols <- num_vols[num_vols != min(input$year1) & num_vols != max(input$year1) & num_vols > 30]
+      print(num_vols)
+      survey <- rep(input$year1, times = length(org))      
+      print(survey)
+      message('-- Creating new dataframe...')
+      file <- data.frame(org, num_vols, survey)
+      file <- file[complete.cases(file), ]
+      file <- arrange(file)
+      print(file)
     })
+    do.call(rbind, file)
   })
-  
   output$histogram <- renderPlot({ 
     req(input$plot_title)
     req(input$pdf_title)
-    
+    message("Plotting data in a histogram...")
     ggplot(data = plot_data(), aes(x = org, y = num_vols, fill = survey, color = survey)) +
       geom_bar(position = "dodge", stat = "identity") +
       scale_size_area() + 
